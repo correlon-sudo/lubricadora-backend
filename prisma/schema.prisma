@@ -1,0 +1,628 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum RolUsuario {
+  ADMIN
+  ENCARGADO
+  VENDEDOR
+}
+
+enum TipoMovimientoInventario {
+  ENTRADA
+  SALIDA
+  AJUSTE
+  TRANSFERENCIA_ENT
+  TRANSFERENCIA_SAL
+  VENTA
+  ANULACION
+}
+
+enum TipoIdentificacion {
+  CEDULA
+  RUC
+  PASAPORTE
+}
+
+enum TipoItemVenta {
+  PRODUCTO
+  SERVICIO
+}
+
+enum EstadoCotizacion {
+  VIGENTE
+  CONVERTIDA
+  ANULADA
+  VENCIDA
+}
+
+enum TipoComprobante {
+  FACTURA
+  NOTA_VENTA
+  NOTA_PEDIDO
+  NOTA_ENTREGA
+}
+
+enum EstadoVenta {
+  EMITIDA
+  ANULADA
+}
+
+enum FormaPago {
+  EFECTIVO
+  TRANSFERENCIA
+  TARJETA
+}
+
+enum EstadoCaja {
+  ABIERTA
+  CERRADA
+}
+
+enum TipoMovimientoCaja {
+  INGRESO
+  EGRESO
+}
+
+enum EstadoTransferencia {
+  PENDIENTE
+  EN_TRANSITO
+  RECIBIDA
+  ANULADA
+}
+
+enum TipoSueldo {
+  SEMANAL
+  MENSUAL
+}
+
+enum EstadoAsistencia {
+  PRESENTE
+  FALTA
+  PERMISO
+  MEDIO_DIA
+}
+
+enum EstadoNomina {
+  PENDIENTE
+  PAGADO
+}
+
+model Sucursal {
+  id        String   @id @default(uuid())
+  nombre    String   @db.VarChar(120)
+  direccion String?  @db.VarChar(200)
+  telefono  String?  @db.VarChar(30)
+  esMatriz  Boolean  @default(false) @map("es_matriz")
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  usuarios              Usuario[]
+  inventarios           InventarioSucursal[]
+  movimientosInventario MovimientoInventario[]
+  cotizaciones          Cotizacion[]
+  ventas                Venta[]
+  cajas                 Caja[]
+  transferenciasOrigen  Transferencia[]        @relation("TransferenciaOrigen")
+  transferenciasDestino Transferencia[]        @relation("TransferenciaDestino")
+  colaboradores         Colaborador[]
+
+  @@index([nombre])
+  @@map("sucursal")
+}
+
+model Usuario {
+  id           String     @id @default(uuid())
+  sucursalId   String     @map("sucursal_id")
+  nombres      String     @db.VarChar(100)
+  apellidos    String     @db.VarChar(100)
+  cedula       String     @unique @db.VarChar(13)
+  email        String     @unique @db.VarChar(150)
+  username     String     @unique @db.VarChar(60)
+  passwordHash String     @map("password_hash") @db.VarChar(255)
+  rol          RolUsuario
+  activo       Boolean    @default(true)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  sucursal                Sucursal               @relation(fields: [sucursalId], references: [id])
+  refreshTokens           RefreshToken[]
+  movimientosInventario   MovimientoInventario[]
+  cotizaciones            Cotizacion[]
+  ventas                  Venta[]
+  cajasAbiertas           Caja[]                 @relation("CajaApertura")
+  cajasCerradas           Caja[]                 @relation("CajaCierre")
+  movimientosCaja         MovimientoCaja[]
+  transferenciasEnviadas  Transferencia[]        @relation("TransferenciaEnvia")
+  transferenciasRecibidas Transferencia[]        @relation("TransferenciaRecibe")
+  colaborador             Colaborador?
+  adelantosRegistrados    AdelantoSueldo[]
+  auditorias              Auditoria[]
+
+  @@index([sucursalId])
+  @@map("usuario")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  usuarioId String   @map("usuario_id")
+  tokenHash String   @map("token_hash") @db.VarChar(255)
+  expiresAt DateTime @map("expires_at")
+  revocado  Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@index([usuarioId, revocado])
+  @@map("refresh_token")
+}
+
+model Configuracion {
+  id              String   @id @default(uuid())
+  ruc             String?  @db.VarChar(13)
+  razonSocial     String?  @map("razon_social") @db.VarChar(160)
+  nombreComercial String?  @map("nombre_comercial") @db.VarChar(160)
+  direccion       String?  @db.VarChar(200)
+  telefono        String?  @db.VarChar(30)
+  logoUrl         String?  @map("logo_url")
+  porcentajeIva   Decimal  @default(15.00) @map("porcentaje_iva") @db.Decimal(5, 2)
+  moneda          String   @default("USD") @db.VarChar(10)
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("configuracion")
+}
+
+model Categoria {
+  id          String  @id @default(uuid())
+  nombre      String  @unique @db.VarChar(80)
+  descripcion String?
+
+  productos Producto[]
+
+  @@map("categoria")
+}
+
+model Marca {
+  id     String @id @default(uuid())
+  nombre String @unique @db.VarChar(80)
+
+  productos Producto[]
+
+  @@index([nombre])
+  @@map("marca")
+}
+
+model Producto {
+  id           String   @id @default(uuid())
+  codigo       String   @unique @db.VarChar(40)
+  nombre       String   @db.VarChar(150)
+  descripcion  String?
+  marcaId      String   @map("marca_id")
+  categoriaId  String   @map("categoria_id")
+  precioCosto  Decimal  @map("precio_costo") @db.Decimal(12, 2)
+  precioVenta  Decimal  @map("precio_venta") @db.Decimal(12, 2)
+  stockMinimo  Int      @default(0) @map("stock_minimo")
+  ivaAplicable Boolean  @default(true) @map("iva_aplicable")
+  activo       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  marca                 Marca                  @relation(fields: [marcaId], references: [id])
+  categoria             Categoria              @relation(fields: [categoriaId], references: [id])
+  inventarios           InventarioSucursal[]
+  movimientosInventario MovimientoInventario[]
+  cotizacionDetalles    CotizacionDetalle[]
+  ventaDetalles         VentaDetalle[]
+  transferenciaDetalles TransferenciaDetalle[]
+
+  @@index([nombre])
+  @@index([marcaId])
+  @@index([categoriaId])
+  @@map("producto")
+}
+
+model InventarioSucursal {
+  id           String    @id @default(uuid())
+  productoId   String    @map("producto_id")
+  sucursalId   String    @map("sucursal_id")
+  cantidad     Int       @default(0)
+  stockMinimo  Int?      @map("stock_minimo")
+  fechaIngreso DateTime? @map("fecha_ingreso")
+
+  producto Producto @relation(fields: [productoId], references: [id])
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
+
+  @@unique([productoId, sucursalId])
+  @@index([cantidad])
+  @@map("inventario_sucursal")
+}
+
+model MovimientoInventario {
+  id              String                   @id @default(uuid())
+  productoId      String                   @map("producto_id")
+  sucursalId      String                   @map("sucursal_id")
+  tipo            TipoMovimientoInventario
+  cantidad        Int
+  stockResultante Int                      @map("stock_resultante")
+  referenciaTipo  String?                  @map("referencia_tipo") @db.VarChar(30)
+  referenciaId    String?                  @map("referencia_id")
+  usuarioId       String                   @map("usuario_id")
+  fecha           DateTime                 @default(now())
+
+  producto Producto @relation(fields: [productoId], references: [id])
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
+  usuario  Usuario  @relation(fields: [usuarioId], references: [id])
+
+  @@index([productoId, sucursalId, fecha])
+  @@map("movimiento_inventario")
+}
+
+model Cliente {
+  id                 String             @id @default(uuid())
+  tipoIdentificacion TipoIdentificacion @map("tipo_identificacion")
+  // El plan original especifica varchar(13) (cédula/RUC EC), se amplía a
+  // 20 para no truncar números de pasaporte extranjeros más largos.
+  identificacion     String             @unique @db.VarChar(20)
+  nombres            String             @db.VarChar(100)
+  apellidos          String?            @db.VarChar(100)
+  razonSocial        String?            @map("razon_social") @db.VarChar(160)
+  email              String?            @db.VarChar(150)
+  telefono           String?            @db.VarChar(30)
+  direccion          String?            @db.VarChar(200)
+  esConsumidorFinal  Boolean            @default(false) @map("es_consumidor_final")
+  activo             Boolean            @default(true)
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  vehiculos    Vehiculo[]
+  cotizaciones Cotizacion[]
+  ventas       Venta[]
+
+  @@index([nombres])
+  @@index([telefono])
+  @@map("cliente")
+}
+
+model Vehiculo {
+  id          String   @id @default(uuid())
+  clienteId   String   @map("cliente_id")
+  placa       String   @unique @db.VarChar(10)
+  marca       String   @db.VarChar(60)
+  modelo      String   @db.VarChar(60)
+  anio        Int?
+  color       String?  @db.VarChar(40)
+  kilometraje Int?
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  cliente      Cliente      @relation(fields: [clienteId], references: [id])
+  cotizaciones Cotizacion[]
+  ventas       Venta[]
+
+  @@index([clienteId])
+  @@index([marca])
+  @@index([modelo])
+  @@map("vehiculo")
+}
+
+model Servicio {
+  id           String   @id @default(uuid())
+  codigo       String   @unique @db.VarChar(40)
+  nombre       String   @db.VarChar(150)
+  descripcion  String?
+  precio       Decimal  @db.Decimal(12, 2)
+  ivaAplicable Boolean  @default(true) @map("iva_aplicable")
+  activo       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  cotizacionDetalles CotizacionDetalle[]
+  ventaDetalles      VentaDetalle[]
+
+  @@index([nombre])
+  @@map("servicio")
+}
+
+model Cotizacion {
+  id          String           @id @default(uuid())
+  numero      String           @unique @db.VarChar(20)
+  sucursalId  String           @map("sucursal_id")
+  clienteId   String?          @map("cliente_id")
+  vehiculoId  String?          @map("vehiculo_id")
+  usuarioId   String           @map("usuario_id")
+  subtotal    Decimal          @db.Decimal(12, 2)
+  descuento   Decimal          @default(0) @db.Decimal(12, 2)
+  iva         Decimal          @db.Decimal(12, 2)
+  total       Decimal          @db.Decimal(12, 2)
+  estado      EstadoCotizacion @default(VIGENTE)
+  validezDias Int              @default(8) @map("validez_dias")
+  fecha       DateTime         @default(now())
+
+  sucursal Sucursal            @relation(fields: [sucursalId], references: [id])
+  cliente  Cliente?            @relation(fields: [clienteId], references: [id])
+  vehiculo Vehiculo?           @relation(fields: [vehiculoId], references: [id])
+  usuario  Usuario             @relation(fields: [usuarioId], references: [id])
+  detalles CotizacionDetalle[]
+  venta    Venta?
+
+  @@index([sucursalId, fecha])
+  @@map("cotizacion")
+}
+
+model CotizacionDetalle {
+  id             String        @id @default(uuid())
+  cotizacionId   String        @map("cotizacion_id")
+  tipoItem       TipoItemVenta @map("tipo_item")
+  productoId     String?       @map("producto_id")
+  servicioId     String?       @map("servicio_id")
+  descripcion    String        @db.VarChar(200)
+  cantidad       Int
+  precioUnitario Decimal       @map("precio_unitario") @db.Decimal(12, 2)
+  descuento      Decimal       @default(0) @db.Decimal(12, 2)
+  // No está en el plan original (solo venta_detalle la tenía) — se agrega
+  // para poder "convertir" una cotización a venta honrando el IVA cotizado
+  // sin depender del catálogo en vivo al momento de la conversión.
+  ivaPorcentaje  Decimal       @map("iva_porcentaje") @db.Decimal(5, 2)
+  subtotal       Decimal       @db.Decimal(12, 2)
+
+  cotizacion Cotizacion @relation(fields: [cotizacionId], references: [id])
+  producto   Producto?  @relation(fields: [productoId], references: [id])
+  servicio   Servicio?  @relation(fields: [servicioId], references: [id])
+
+  @@index([cotizacionId])
+  @@map("cotizacion_detalle")
+}
+
+model Venta {
+  id              String          @id @default(uuid())
+  numero          String          @unique @db.VarChar(20)
+  tipoComprobante TipoComprobante @map("tipo_comprobante")
+  sucursalId      String          @map("sucursal_id")
+  clienteId       String?         @map("cliente_id")
+  vehiculoId      String?         @map("vehiculo_id")
+  usuarioId       String          @map("usuario_id")
+  // Fase 5 (Caja) ya existe: el service ahora exige una caja ABIERTA de la
+  // sucursal y la adjunta automáticamente (server-derived, no viene del
+  // cliente). La columna sigue nullable en DB por las ventas de prueba de
+  // Fase 4 creadas antes de que Caja existiera — no se fuerza NOT NULL para
+  // evitar otro reset destructivo de datos de prueba.
+  cajaId          String?         @map("caja_id")
+  cotizacionId    String?         @unique @map("cotizacion_id")
+  subtotal        Decimal         @db.Decimal(12, 2)
+  descuentoTotal  Decimal         @default(0) @map("descuento_total") @db.Decimal(12, 2)
+  iva             Decimal         @db.Decimal(12, 2)
+  total           Decimal         @db.Decimal(12, 2)
+  estado          EstadoVenta     @default(EMITIDA)
+  fecha           DateTime        @default(now())
+
+  sucursal   Sucursal       @relation(fields: [sucursalId], references: [id])
+  cliente    Cliente?       @relation(fields: [clienteId], references: [id])
+  vehiculo   Vehiculo?      @relation(fields: [vehiculoId], references: [id])
+  usuario    Usuario        @relation(fields: [usuarioId], references: [id])
+  caja       Caja?          @relation(fields: [cajaId], references: [id])
+  cotizacion Cotizacion?    @relation(fields: [cotizacionId], references: [id])
+  detalles   VentaDetalle[]
+  pagos      PagoVenta[]
+
+  @@index([sucursalId, fecha])
+  @@index([fecha])
+  @@map("venta")
+}
+
+model VentaDetalle {
+  id             String        @id @default(uuid())
+  ventaId        String        @map("venta_id")
+  tipoItem       TipoItemVenta @map("tipo_item")
+  productoId     String?       @map("producto_id")
+  servicioId     String?       @map("servicio_id")
+  descripcion    String        @db.VarChar(200)
+  cantidad       Int
+  precioUnitario Decimal       @map("precio_unitario") @db.Decimal(12, 2)
+  descuento      Decimal       @default(0) @db.Decimal(12, 2)
+  ivaPorcentaje  Decimal       @map("iva_porcentaje") @db.Decimal(5, 2)
+  subtotal       Decimal       @db.Decimal(12, 2)
+
+  venta    Venta     @relation(fields: [ventaId], references: [id])
+  producto Producto? @relation(fields: [productoId], references: [id])
+  servicio Servicio? @relation(fields: [servicioId], references: [id])
+
+  @@index([ventaId])
+  @@map("venta_detalle")
+}
+
+model PagoVenta {
+  id         String    @id @default(uuid())
+  ventaId    String    @map("venta_id")
+  formaPago  FormaPago @map("forma_pago")
+  monto      Decimal   @db.Decimal(12, 2)
+  referencia String?   @db.VarChar(100)
+
+  venta Venta @relation(fields: [ventaId], references: [id])
+
+  @@index([ventaId])
+  @@map("pago_venta")
+}
+
+model Caja {
+  id                 String     @id @default(uuid())
+  sucursalId         String     @map("sucursal_id")
+  usuarioAperturaId  String     @map("usuario_apertura_id")
+  usuarioCierreId    String?    @map("usuario_cierre_id")
+  montoInicial       Decimal    @map("monto_inicial") @db.Decimal(12, 2)
+  fechaApertura      DateTime   @default(now()) @map("fecha_apertura")
+  fechaCierre        DateTime?  @map("fecha_cierre")
+  estado             EstadoCaja @default(ABIERTA)
+  totalEfectivo      Decimal?   @map("total_efectivo") @db.Decimal(12, 2)
+  totalTransferencia Decimal?   @map("total_transferencia") @db.Decimal(12, 2)
+  totalTarjeta       Decimal?   @map("total_tarjeta") @db.Decimal(12, 2)
+  montoEsperado      Decimal?   @map("monto_esperado") @db.Decimal(12, 2)
+  montoContado       Decimal?   @map("monto_contado") @db.Decimal(12, 2)
+  diferencia         Decimal?   @db.Decimal(12, 2)
+  observacion        String?
+
+  sucursal        Sucursal         @relation(fields: [sucursalId], references: [id])
+  usuarioApertura Usuario          @relation("CajaApertura", fields: [usuarioAperturaId], references: [id])
+  usuarioCierre   Usuario?         @relation("CajaCierre", fields: [usuarioCierreId], references: [id])
+  ventas          Venta[]
+  movimientos     MovimientoCaja[]
+
+  @@index([sucursalId, estado])
+  @@map("caja")
+}
+
+model MovimientoCaja {
+  id        String             @id @default(uuid())
+  cajaId    String             @map("caja_id")
+  tipo      TipoMovimientoCaja
+  monto     Decimal            @db.Decimal(12, 2)
+  concepto  String             @db.VarChar(200)
+  usuarioId String             @map("usuario_id")
+  fecha     DateTime           @default(now())
+
+  caja    Caja    @relation(fields: [cajaId], references: [id])
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@index([cajaId])
+  @@map("movimiento_caja")
+}
+
+model Transferencia {
+  id                String              @id @default(uuid())
+  numero            String              @unique @db.VarChar(20)
+  sucursalOrigenId  String              @map("sucursal_origen_id")
+  sucursalDestinoId String              @map("sucursal_destino_id")
+  estado            EstadoTransferencia @default(PENDIENTE)
+  usuarioEnviaId    String              @map("usuario_envia_id")
+  usuarioRecibeId   String?             @map("usuario_recibe_id")
+  // fechaEnvio se setea cuando pasa a EN_TRANSITO (acción "enviar"), no al
+  // crear el registro — el plan lo lista sin "(null)" pero conceptualmente
+  // es la fecha de despacho real, que ocurre después de la creación.
+  fechaEnvio        DateTime?           @map("fecha_envio")
+  fechaRecepcion    DateTime?           @map("fecha_recepcion")
+  observacion       String?
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  sucursalOrigen  Sucursal               @relation("TransferenciaOrigen", fields: [sucursalOrigenId], references: [id])
+  sucursalDestino Sucursal               @relation("TransferenciaDestino", fields: [sucursalDestinoId], references: [id])
+  usuarioEnvia    Usuario                @relation("TransferenciaEnvia", fields: [usuarioEnviaId], references: [id])
+  usuarioRecibe   Usuario?               @relation("TransferenciaRecibe", fields: [usuarioRecibeId], references: [id])
+  detalles        TransferenciaDetalle[]
+
+  @@index([sucursalOrigenId])
+  @@index([sucursalDestinoId])
+  @@map("transferencia")
+}
+
+model TransferenciaDetalle {
+  id               String @id @default(uuid())
+  transferenciaId  String @map("transferencia_id")
+  productoId       String @map("producto_id")
+  cantidad         Int
+  cantidadRecibida Int?   @map("cantidad_recibida")
+
+  transferencia Transferencia @relation(fields: [transferenciaId], references: [id])
+  producto      Producto      @relation(fields: [productoId], references: [id])
+
+  @@index([transferenciaId])
+  @@map("transferencia_detalle")
+}
+
+model Colaborador {
+  id           String     @id @default(uuid())
+  sucursalId   String     @map("sucursal_id")
+  usuarioId    String?    @unique @map("usuario_id")
+  nombres      String     @db.VarChar(100)
+  apellidos    String     @db.VarChar(100)
+  cedula       String     @unique @db.VarChar(13)
+  telefono     String?    @db.VarChar(30)
+  direccion    String?    @db.VarChar(200)
+  email        String?    @db.VarChar(150)
+  cargo        String?    @db.VarChar(100)
+  fotoUrl      String?    @map("foto_url")
+  tipoSueldo   TipoSueldo @map("tipo_sueldo")
+  montoSueldo  Decimal    @map("monto_sueldo") @db.Decimal(12, 2)
+  fechaIngreso DateTime   @map("fecha_ingreso") @db.Date
+  activo       Boolean    @default(true)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  sucursal    Sucursal         @relation(fields: [sucursalId], references: [id])
+  usuario     Usuario?         @relation(fields: [usuarioId], references: [id])
+  adelantos   AdelantoSueldo[]
+  asistencias Asistencia[]
+  nominas     Nomina[]
+
+  @@index([sucursalId])
+  @@map("colaborador")
+}
+
+model AdelantoSueldo {
+  id                String   @id @default(uuid())
+  colaboradorId     String   @map("colaborador_id")
+  monto             Decimal  @db.Decimal(12, 2)
+  motivo            String?  @db.VarChar(200)
+  fecha             DateTime @default(now())
+  usuarioRegistraId String   @map("usuario_registra_id")
+
+  colaborador     Colaborador @relation(fields: [colaboradorId], references: [id])
+  usuarioRegistra Usuario     @relation(fields: [usuarioRegistraId], references: [id])
+
+  @@index([colaboradorId, fecha])
+  @@map("adelanto_sueldo")
+}
+
+model Asistencia {
+  id            String           @id @default(uuid())
+  colaboradorId String           @map("colaborador_id")
+  fecha         DateTime         @db.Date
+  estado        EstadoAsistencia
+  observacion   String?
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id])
+
+  @@unique([colaboradorId, fecha])
+  @@map("asistencia")
+}
+
+model Nomina {
+  id              String       @id @default(uuid())
+  colaboradorId   String       @map("colaborador_id")
+  periodoInicio   DateTime     @map("periodo_inicio") @db.Date
+  periodoFin      DateTime     @map("periodo_fin") @db.Date
+  sueldoBase      Decimal      @map("sueldo_base") @db.Decimal(12, 2)
+  totalAdelantos  Decimal      @default(0) @map("total_adelantos") @db.Decimal(12, 2)
+  totalDescuentos Decimal      @default(0) @map("total_descuentos") @db.Decimal(12, 2)
+  netoPagar       Decimal      @map("neto_pagar") @db.Decimal(12, 2)
+  estado          EstadoNomina @default(PENDIENTE)
+  fechaPago       DateTime?    @map("fecha_pago")
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id])
+
+  @@unique([colaboradorId, periodoInicio, periodoFin])
+  @@map("nomina")
+}
+
+model Auditoria {
+  id        String   @id @default(uuid())
+  usuarioId String   @map("usuario_id")
+  accion    String   @db.VarChar(30)
+  entidad   String   @db.VarChar(30)
+  entidadId String   @map("entidad_id")
+  detalle   Json?
+  ip        String?  @db.VarChar(45)
+  fecha     DateTime @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@index([entidad, entidadId])
+  @@index([usuarioId, fecha])
+  @@map("auditoria")
+}

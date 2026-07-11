@@ -1,0 +1,19 @@
+# Opcional — solo para desarrollo offline si Supabase está pausado/sin internet.
+# La app y las migraciones apuntan a Supabase (ver .env.example) por defecto.
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lubricadora
+      POSTGRES_PASSWORD: lubricadora
+      POSTGRES_DB: lubricadora
+    ports:
+      # 5433 en el host: el 5432 default ya lo usa otro proyecto en esta
+      # máquina (contenedor "teslodb", ver `docker ps`).
+      - '5433:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

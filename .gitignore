@@ -1,0 +1,9 @@
+node_modules
+# Keep environment variables out of version control
+.env
+
+/generated/prisma
+
+# Fotos subidas de colaboradores (Fase 7) — no versionar contenido, solo la carpeta
+/uploads/**
+!/uploads/**/.gitkeep
