@@ -273,8 +273,9 @@ export class TransferenciasService {
 
   async reportePdf(id: string) {
     const transferencia = await this.findOne(id);
-    const html = this.buildTransferenciaHtml(transferencia);
-    return this.pdfService.htmlToPdf(html);
+    const doc = this.pdfService.crear();
+    this.dibujarTransferenciaPdf(doc, transferencia);
+    return this.pdfService.aBuffer(doc);
   }
 
   private async generarNumero() {
@@ -282,55 +283,46 @@ export class TransferenciasService {
     return `TRF-${String(count + 1).padStart(6, '0')}`;
   }
 
-  private buildTransferenciaHtml(t: Awaited<ReturnType<TransferenciasService['findOne']>>): string {
-    const filas = t.detalles
-      .map(
-        (d) => `
-          <tr>
-            <td>${d.producto.codigo}</td>
-            <td>${d.producto.nombre}</td>
-            <td style="text-align:right">${d.cantidad}</td>
-            <td style="text-align:right">${d.cantidadRecibida ?? '—'}</td>
-          </tr>
-        `,
-      )
-      .join('');
+  private dibujarTransferenciaPdf(
+    doc: PDFKit.PDFDocument,
+    t: Awaited<ReturnType<TransferenciasService['findOne']>>,
+  ): void {
+    doc.fontSize(16).font('Helvetica-Bold').text(`Transferencia ${t.numero}`);
+    doc.moveDown(0.3);
+    doc.fontSize(9).font('Helvetica').fillColor('#444');
+    doc.text(`Origen: ${t.sucursalOrigen.nombre} → Destino: ${t.sucursalDestino.nombre}`);
+    doc.text(`Estado: ${t.estado}`);
+    doc.text(
+      `Envía: ${t.usuarioEnvia.nombres} ${t.usuarioEnvia.apellidos}${t.fechaEnvio ? ` (${new Date(t.fechaEnvio).toLocaleString('es-EC')})` : ''}`,
+    );
+    if (t.usuarioRecibe) {
+      doc.text(
+        `Recibe: ${t.usuarioRecibe.nombres} ${t.usuarioRecibe.apellidos} (${new Date(t.fechaRecepcion!).toLocaleString('es-EC')})`,
+      );
+    }
+    if (t.observacion) {
+      doc.text(`Observación: ${t.observacion}`);
+    }
+    doc.fillColor('#000');
+    doc.moveDown(1);
 
-    return `
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <style>
-            body { font-family: Arial, sans-serif; font-size: 12px; color: #222; }
-            h1 { font-size: 18px; margin-bottom: 4px; }
-            .meta { color: #444; margin-bottom: 16px; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { border: 1px solid #ccc; padding: 6px 8px; }
-            th { background: #f2f2f2; text-align: left; }
-          </style>
-        </head>
-        <body>
-          <h1>Transferencia ${t.numero}</h1>
-          <div class="meta">
-            Origen: ${t.sucursalOrigen.nombre} → Destino: ${t.sucursalDestino.nombre}<br />
-            Estado: ${t.estado}<br />
-            Envía: ${t.usuarioEnvia.nombres} ${t.usuarioEnvia.apellidos}
-            ${t.fechaEnvio ? ` (${new Date(t.fechaEnvio).toLocaleString('es-EC')})` : ''}<br />
-            ${
-              t.usuarioRecibe
-                ? `Recibe: ${t.usuarioRecibe.nombres} ${t.usuarioRecibe.apellidos} (${new Date(t.fechaRecepcion!).toLocaleString('es-EC')})<br />`
-                : ''
-            }
-            ${t.observacion ? `Observación: ${t.observacion}` : ''}
-          </div>
-          <table>
-            <thead>
-              <tr><th>Código</th><th>Producto</th><th>Cant. enviada</th><th>Cant. recibida</th></tr>
-            </thead>
-            <tbody>${filas}</tbody>
-          </table>
-        </body>
-      </html>
-    `;
+    const filas = t.detalles.map((d) => [
+      d.producto.codigo,
+      d.producto.nombre,
+      String(d.cantidad),
+      d.cantidadRecibida != null ? String(d.cantidadRecibida) : '—',
+    ]);
+    doc.y = this.pdfService.dibujarTabla(
+      doc,
+      40,
+      doc.y,
+      [
+        { titulo: 'Código', ancho: 80 },
+        { titulo: 'Producto', ancho: 220 },
+        { titulo: 'Cant. enviada', ancho: 90, align: 'right' },
+        { titulo: 'Cant. recibida', ancho: 90, align: 'right' },
+      ],
+      filas,
+    );
   }
 }

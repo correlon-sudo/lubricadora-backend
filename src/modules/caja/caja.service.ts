@@ -206,8 +206,9 @@ export class CajaService {
 
   async reportePdf(id: string) {
     const reporte = await this.reporteDiario(id);
-    const html = this.buildReporteHtml(reporte);
-    return this.pdfService.htmlToPdf(html);
+    const doc = this.pdfService.crear();
+    this.dibujarReporteCierre(doc, reporte);
+    return this.pdfService.aBuffer(doc);
   }
 
   private serializar(caja: {
@@ -233,79 +234,85 @@ export class CajaService {
     };
   }
 
-  private buildReporteHtml(reporte: any): string {
-    const filasVentas = reporte.ventas
-      .map(
-        (v: any) => `
-          <tr>
-            <td>${v.numero}</td>
-            <td>${v.estado}</td>
-            <td style="text-align:right">${v.total.toFixed(2)}</td>
-            <td>${v.pagos.map((p: any) => `${p.formaPago}: ${p.monto.toFixed(2)}`).join(', ')}</td>
-          </tr>
-        `,
-      )
-      .join('');
+  private dibujarReporteCierre(doc: PDFKit.PDFDocument, reporte: any): void {
+    doc.fontSize(16).font('Helvetica-Bold').text(`Cierre de Caja — ${reporte.sucursal.nombre}`);
+    doc.moveDown(0.3);
+    doc
+      .fontSize(9)
+      .font('Helvetica')
+      .fillColor('#444')
+      .text(
+        `Apertura: ${new Date(reporte.fechaApertura).toLocaleString('es-EC')} (${reporte.usuarioApertura.nombres} ${reporte.usuarioApertura.apellidos})`,
+      );
+    doc.text(
+      reporte.fechaCierre
+        ? `Cierre: ${new Date(reporte.fechaCierre).toLocaleString('es-EC')} (${reporte.usuarioCierre?.nombres ?? ''} ${reporte.usuarioCierre?.apellidos ?? ''})`
+        : 'Caja aún abierta',
+    );
+    doc.fillColor('#000');
+    doc.moveDown(1);
 
-    const filasMovimientos = reporte.movimientos
-      .map(
-        (m: any) => `
-          <tr>
-            <td>${new Date(m.fecha).toLocaleString('es-EC')}</td>
-            <td>${m.tipo}</td>
-            <td>${m.concepto}</td>
-            <td style="text-align:right">${m.monto.toFixed(2)}</td>
-          </tr>
-        `,
-      )
-      .join('');
+    doc.fontSize(12).font('Helvetica-Bold').text('Ventas');
+    doc.moveDown(0.3);
+    if (reporte.ventas.length) {
+      const filasVentas = reporte.ventas.map((v: any) => [
+        v.numero,
+        v.estado,
+        v.total.toFixed(2),
+        v.pagos.map((p: any) => `${p.formaPago}: ${p.monto.toFixed(2)}`).join(', '),
+      ]);
+      doc.y = this.pdfService.dibujarTabla(
+        doc,
+        40,
+        doc.y,
+        [
+          { titulo: 'Número', ancho: 90 },
+          { titulo: 'Estado', ancho: 70 },
+          { titulo: 'Total', ancho: 70, align: 'right' },
+          { titulo: 'Pagos', ancho: 220 },
+        ],
+        filasVentas,
+      );
+    } else {
+      doc.fontSize(9).font('Helvetica').text('Sin ventas');
+    }
+    doc.moveDown(1);
 
-    return `
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <style>
-            body { font-family: Arial, sans-serif; font-size: 12px; color: #222; }
-            h1 { font-size: 18px; margin-bottom: 4px; }
-            h2 { font-size: 14px; margin-top: 20px; }
-            .meta { color: #444; margin-bottom: 16px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-            th, td { border: 1px solid #ccc; padding: 6px 8px; }
-            th { background: #f2f2f2; text-align: left; }
-            .totales td { border: none; padding: 2px 8px; }
-          </style>
-        </head>
-        <body>
-          <h1>Cierre de Caja — ${reporte.sucursal.nombre}</h1>
-          <div class="meta">
-            Apertura: ${new Date(reporte.fechaApertura).toLocaleString('es-EC')} (${reporte.usuarioApertura.nombres} ${reporte.usuarioApertura.apellidos})<br />
-            ${reporte.fechaCierre ? `Cierre: ${new Date(reporte.fechaCierre).toLocaleString('es-EC')} (${reporte.usuarioCierre?.nombres ?? ''} ${reporte.usuarioCierre?.apellidos ?? ''})` : 'Caja aún abierta'}
-          </div>
+    doc.fontSize(12).font('Helvetica-Bold').text('Movimientos manuales');
+    doc.moveDown(0.3);
+    if (reporte.movimientos.length) {
+      const filasMovimientos = reporte.movimientos.map((m: any) => [
+        new Date(m.fecha).toLocaleString('es-EC'),
+        m.tipo,
+        m.concepto,
+        m.monto.toFixed(2),
+      ]);
+      doc.y = this.pdfService.dibujarTabla(
+        doc,
+        40,
+        doc.y,
+        [
+          { titulo: 'Fecha', ancho: 120 },
+          { titulo: 'Tipo', ancho: 70 },
+          { titulo: 'Concepto', ancho: 190 },
+          { titulo: 'Monto', ancho: 70, align: 'right' },
+        ],
+        filasMovimientos,
+      );
+    } else {
+      doc.fontSize(9).font('Helvetica').text('Sin movimientos');
+    }
+    doc.moveDown(1);
 
-          <h2>Ventas</h2>
-          <table>
-            <thead><tr><th>Número</th><th>Estado</th><th>Total</th><th>Pagos</th></tr></thead>
-            <tbody>${filasVentas || '<tr><td colspan="4">Sin ventas</td></tr>'}</tbody>
-          </table>
-
-          <h2>Movimientos manuales</h2>
-          <table>
-            <thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Monto</th></tr></thead>
-            <tbody>${filasMovimientos || '<tr><td colspan="4">Sin movimientos</td></tr>'}</tbody>
-          </table>
-
-          <h2>Arqueo</h2>
-          <table class="totales" style="width:auto;">
-            <tr><td>Monto inicial</td><td style="text-align:right">${reporte.montoInicial.toFixed(2)}</td></tr>
-            <tr><td>Total efectivo</td><td style="text-align:right">${(reporte.totalEfectivo ?? 0).toFixed(2)}</td></tr>
-            <tr><td>Total transferencia</td><td style="text-align:right">${(reporte.totalTransferencia ?? 0).toFixed(2)}</td></tr>
-            <tr><td>Total tarjeta</td><td style="text-align:right">${(reporte.totalTarjeta ?? 0).toFixed(2)}</td></tr>
-            <tr><td><strong>Monto esperado (efectivo)</strong></td><td style="text-align:right"><strong>${(reporte.montoEsperado ?? 0).toFixed(2)}</strong></td></tr>
-            <tr><td>Monto contado</td><td style="text-align:right">${(reporte.montoContado ?? 0).toFixed(2)}</td></tr>
-            <tr><td><strong>Diferencia</strong></td><td style="text-align:right"><strong>${(reporte.diferencia ?? 0).toFixed(2)}</strong></td></tr>
-          </table>
-        </body>
-      </html>
-    `;
+    doc.fontSize(12).font('Helvetica-Bold').text('Arqueo');
+    doc.moveDown(0.3);
+    doc.fontSize(9).font('Helvetica');
+    doc.text(`Monto inicial: ${reporte.montoInicial.toFixed(2)}`);
+    doc.text(`Total efectivo: ${(reporte.totalEfectivo ?? 0).toFixed(2)}`);
+    doc.text(`Total transferencia: ${(reporte.totalTransferencia ?? 0).toFixed(2)}`);
+    doc.text(`Total tarjeta: ${(reporte.totalTarjeta ?? 0).toFixed(2)}`);
+    doc.font('Helvetica-Bold').text(`Monto esperado (efectivo): ${(reporte.montoEsperado ?? 0).toFixed(2)}`);
+    doc.font('Helvetica').text(`Monto contado: ${(reporte.montoContado ?? 0).toFixed(2)}`);
+    doc.font('Helvetica-Bold').text(`Diferencia: ${(reporte.diferencia ?? 0).toFixed(2)}`);
   }
 }

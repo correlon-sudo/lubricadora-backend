@@ -101,60 +101,47 @@ export class ProductosService {
 
   async reportePdf(filters: FindProductosQueryDto) {
     const productos = await this.findAll(filters);
-    const html = this.buildReporteHtml(productos);
-    return this.pdfService.htmlToPdf(html);
+    const doc = this.pdfService.crear();
+    this.dibujarReporteProductos(doc, productos);
+    return this.pdfService.aBuffer(doc);
   }
 
-  private buildReporteHtml(
+  private dibujarReporteProductos(
+    doc: PDFKit.PDFDocument,
     productos: Awaited<ReturnType<ProductosService['findAll']>>,
-  ) {
-    const filas = productos
-      .map(
-        (p) => `
-          <tr>
-            <td>${p.codigo}</td>
-            <td>${p.nombre}</td>
-            <td>${p.marca.nombre}</td>
-            <td>${p.categoria.nombre}</td>
-            <td style="text-align:right">${p.precioVenta.toFixed(2)}</td>
-            <td style="text-align:right">${p.stockTotal}</td>
-          </tr>
-        `,
-      )
-      .join('');
+  ): void {
+    doc.fontSize(16).font('Helvetica-Bold').text('Reporte de Inventario');
+    doc.moveDown(0.3);
+    doc
+      .fontSize(9)
+      .font('Helvetica')
+      .fillColor('#666')
+      .text(`Generado: ${new Date().toLocaleString('es-EC')}`);
+    doc.fillColor('#000');
+    doc.moveDown(1);
 
-    return `
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <style>
-            body { font-family: Arial, sans-serif; font-size: 12px; color: #222; }
-            h1 { font-size: 18px; margin-bottom: 4px; }
-            .fecha { color: #666; margin-bottom: 16px; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { border: 1px solid #ccc; padding: 6px 8px; }
-            th { background: #f2f2f2; text-align: left; }
-          </style>
-        </head>
-        <body>
-          <h1>Reporte de Inventario</h1>
-          <div class="fecha">Generado: ${new Date().toLocaleString('es-EC')}</div>
-          <table>
-            <thead>
-              <tr>
-                <th>Código</th>
-                <th>Nombre</th>
-                <th>Marca</th>
-                <th>Categoría</th>
-                <th style="text-align:right">Precio venta</th>
-                <th style="text-align:right">Stock</th>
-              </tr>
-            </thead>
-            <tbody>${filas}</tbody>
-          </table>
-        </body>
-      </html>
-    `;
+    const filas = productos.map((p) => [
+      p.codigo,
+      p.nombre,
+      p.marca.nombre,
+      p.categoria.nombre,
+      p.precioVenta.toFixed(2),
+      String(p.stockTotal),
+    ]);
+    this.pdfService.dibujarTabla(
+      doc,
+      40,
+      doc.y,
+      [
+        { titulo: 'Código', ancho: 70 },
+        { titulo: 'Nombre', ancho: 160 },
+        { titulo: 'Marca', ancho: 90 },
+        { titulo: 'Categoría', ancho: 90 },
+        { titulo: 'Precio venta', ancho: 60, align: 'right' },
+        { titulo: 'Stock', ancho: 45, align: 'right' },
+      ],
+      filas,
+    );
   }
 
   // Prisma serializa Decimal como string en JSON — normalizamos a number
